@@ -1,15 +1,14 @@
 import numpy as np
 import random as r
 import time
+import os
+import urllib
+from StringIO import StringIO
+import threading
 
 import tensorflow as tf
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import tf_logging as logging
-
-import urllib
-from StringIO import StringIO
-
-import threading
 
 from PIL import ImageFont
 from PIL import Image
@@ -66,12 +65,12 @@ class Input(object):
     
     def train_batch(self, BATCH_NUM, coord=None):
         images, labels = self.batch(BATCH_NUM, coord)
-        images=[self.augment(image) for image in images]
+        images=[print_digit(self.augment(image)) for image in images]
         return np.asarray(images,dtype=np.uint8), np.asarray(labels,dtype=np.int32)
     
     def eval_batch(self, BATCH_NUM=1, coord=None):
         images, labels = self.batch(BATCH_NUM, coord)
-        images=[self.random_flip(self.random_resize(image)) for image in images]
+        images=[random_flip(random_resize(image)) for image in images]
         return np.asarray(images,dtype=np.uint8), np.asarray(labels,dtype=np.int32)
             
     def _run(self, coord=None):
@@ -125,84 +124,58 @@ class Input(object):
         return threads
     
     def augment(self, image, short=[256,257], crop=[224,224]):
-        image=self.random_resize(image)
-        image=self.random_crop(image)
-        image=self.random_flip(image)
+        image=random_resize(image)
+        image=random_crop(image)
+        image=random_flip(image)
         return image
     
-    def augment_deprecated(self, image, short=[256,257], crop=[224,224]):
-        img=Image.fromarray(image,'RGB')
-        width, height = img.size
-        
-        target_short=np.random.randint(short[0],short[1])
-        rate=target_short/float(min([width,height]))
-        
-        target_height=int(height*rate)
-        target_width=int(width*rate)
-        
-        cut_height=np.random.randint(0,target_height-crop[0])
-        cut_width=np.random.randint(0,target_width-crop[1])
-        
-        bool_flip=np.random.choice([True,False])
-        
-        img=img.resize((target_width,target_height),resample=Image.BILINEAR)
-        img=img.crop((cut_width,cut_height,cut_width+crop[1],cut_height+crop[0]))
-        if bool_flip:img=img.transpose(Image.FLIP_LEFT_RIGHT)
-        
-        res=np.array(img)
-        #res=res-np.array([100,100,100])
-        return res
+def random_flip(image):
+    bool_flip=np.random.choice([True,False])
+    img=Image.fromarray(image,"RGB")
+    if bool_flip: img=img.transpose(Image.FLIP_LEFT_RIGHT)
+    return np.array(img)
     
-    def random_flip(self, image):
-        bool_flip=np.random.choice([True,False])
-        img=Image.fromarray(image,"RGB")
-        if bool_flip: img=img.transpose(Image.FLIP_LEFT_RIGHT)
-        return np.array(img)
+def random_resize(image, short=[256,257]):
+    img=Image.fromarray(image,'RGB')
+    width, height = img.size
     
-    def random_resize(self, image, short=[256,257]):
-        img=Image.fromarray(image,'RGB')
-        width, height = img.size
-        
-        target_short=np.random.randint(short[0],short[1])
-        rate=target_short/float(min([width,height]))
-        
-        target_height=int(height*rate)
-        target_width=int(width*rate)
-        
-        img=img.resize((target_width,target_height),resample=Image.BILINEAR)
-        return np.array(img)
+    target_short=np.random.randint(short[0],short[1])
+    rate=target_short/float(min([width,height]))
     
-    def random_crop(self, image, crop=[224,224]):
-        img=Image.fromarray(image,'RGB')
-        width, height = img.size
-        cut_height=np.random.randint(0,height-crop[0])
-        cut_width=np.random.randint(0,width-crop[1])
-        img=img.crop((cut_width,cut_height,cut_width+crop[1],cut_height+crop[0]))
-        return np.array(img)
+    target_height=int(height*rate)
+    target_width=int(width*rate)
     
+    img=img.resize((target_width,target_height),resample=Image.BILINEAR)
+    return np.array(img)
+    
+def random_crop(image, crop=[32,32]):
+    img=Image.fromarray(image,'RGB')
+    width, height = img.size
+    cut_height=np.random.randint(0,height-crop[0])
+    cut_width=np.random.randint(0,width-crop[1])
+    img=img.crop((cut_width,cut_height,cut_width+crop[1],cut_height+crop[0]))
+    return np.array(img)
+
+def print_digit(image, frange=(10,32)):
+    fsize=r.randrange(frange[0],frange[1])
+    font = ImageFont.truetype(r.choice(ttflist),fsize)
+    
+    img = Image.fromarray(image, 'RGB')
+    size = img.size
+    
+    draw = ImageDraw.Draw(img)
+    y_data = r.randrange(0, 10)
+    draw.text(((size[0]-fsize*2/3)/2,(size[1]-fsize*4/3)/2),
+              str(y_data), (255,255,255), font = font)
+    #draw.text(((size[0]-fsize*4/3)/2,(size[1]-fsize*2/3)/2),
+    #          str(y_data), (255,255,255), font = font)
+
+    return np.array(img)
+ 
 def label2vec(label, CLASS_NUM):
     v = np.zeros([CLASS_NUM])
     v[label]=1.0
     return v
 
-def data_generator(n, size=(100,100), frange=(10,50)):
-    data = [[],[]]
-    stime=t.time()
-    for i in range(n):
-        if i % 100 == 0:
-            ltime=t.time()-stime
-            print("Data Generation : {0}/{1}, lapsed {2} sec, estimated {3} min ".format(i,n,ltime,ltime*n/(60*(i+1))))
-        fsize=r.randrange(frange[0],frange[1])
-        font = ImageFont.truetype(r.choice(ttflist),fsize)
-        img = Image.new("L", size, 0)
-        draw = ImageDraw.Draw(img)
-        y_data = r.randrange(0, 10)
-        draw.text((r.randrange(0,size[0]-fsize*4/3+1),r.randrange(0,size[1]-fsize*2/3+1)),
-                  str(y_data), 255, font = font)
-        draw = ImageDraw.Draw(img)
-        x_data = np.reshape(img.getdata(),(1,)+size)
-        data[0].append(x_data)
-        data[1].append(vectorized_result(y_data))
-    return zip(data[0], data[1])
 
        
